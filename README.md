@@ -1,3 +1,5 @@
+# Currently in a very buggy state (disagreements with controller names will throw Ryujinx off) -- I'm in the process of writing a fix!
+
 # Ryujinx Configurator
 When you want to quickly bind your controllers for Ryujinx directly from Steam Big Picture Mode
 
