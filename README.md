@@ -36,6 +36,7 @@ cd ryujinx-configurator
 ```
 
 **2. Set up a Virtual Environment (It is recommended to use a virtual environment to avoid conflicts with system packages).**
+
 My system packages conflicted with some of the packages for this app, so I really do recommend making a virtual environment to solve that :)
 
 ```bash
@@ -78,8 +79,8 @@ I understand that this is a terribly coded app, I appreciate any and all contrib
 
 1. Can't add a non-Steam app because it just doesn't show up in the list even if you browse for it? Well, you should simply add an app that's already in the list of non-Steam apps and then just edit the configuration to what you need. Just in case you need it, the config is here:
 
-* Target: "/home/may/.var/app/io.github.ryubing.Ryujinx/config/Ryujinx/Ryujinx Config Tool" (obviously this one is mine, change it however you need to, also, quotes are required)
-* Start in: /home (no quotes for this one, also, obviously don't add this part in parantheses lol)
+* Target: `"/home/may/.var/app/io.github.ryubing.Ryujinx/config/Ryujinx/Ryujinx Config Tool"` (obviously this one is mine, change it however you need to, also, quotes are required)
+* Start in: `/home` (no quotes for this one)
 * No launch options at all
 
 2. Add any more common issues here and fixes to them
