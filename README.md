@@ -18,6 +18,9 @@ Ryujinx Configurator provides a controller friendly, fullscreen interface that a
 
 This tool is designed for couch gaming setups, allowing you to seamlessly configure multiple controllers for local multiplayer sessions without leaving the Big Picture interface.
 
+## Compatibility
+This project works best with Steam Deck, but it should work with most Linux desktop setups. I have not tested Windows or macOS. That's for the community to help me with :)
+
 ## Installation & Build
 
 This tool is a Python script that can be compiled into a standalone executable.
@@ -60,7 +63,7 @@ The executable will be located in the dist/ folder. You should copy that to the 
 
 Return to Gaming Mode (or Big Picture Mode) so that you can launch the app. Also, it probably goes without mentioning, but you should connect your controllers to your device (Steam Deck, PC, whatever it is) by now.
 
-# Controls
+## Controls
 
 | Action | Controller | Keyboard |
 | --- | --- | --- |
@@ -70,7 +73,7 @@ Return to Gaming Mode (or Big Picture Mode) so that you can launch the app. Also
 | **Save & Exit** | Start | S |
 | **Delete Config** | Nothing | R (while hovering over the player) |
 
-# Issues?
+## Issues?
 I understand that this is a terribly coded app, I appreciate any and all contributions from people much smarter than I. Feel free to add an issue or a pull request :)
 
 1. Can't add a non-Steam app because it just doesn't show up in the list even if you browse for it? Well, you should simply add an app that's already in the list of non-Steam apps and then just edit the configuration to what you need. Just in case you need it, the config is here:
