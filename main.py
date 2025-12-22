@@ -22,7 +22,11 @@ import copy
 import shutil
 import math
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    SCRIPT_DIR = os.path.dirname(sys.executable)
+else:
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "Config.json")
 BACKUP_FILE = os.path.join(SCRIPT_DIR, "Config.json.bak")
 MAX_PLAYERS = 8
