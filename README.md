@@ -19,14 +19,14 @@ Ryujinx Configurator provides a controller friendly, fullscreen interface that a
 This tool is designed for couch gaming setups, allowing you to seamlessly configure multiple controllers for local multiplayer sessions without leaving the Big Picture interface.
 
 ## Compatibility
-This project works best with Steam Deck (that's the only device I tested on), but it should work with most Linux desktop setups. I have not tested Windows or macOS. That's for the community to help me with :)
+*This project works best with Steam Deck* (that's the only device I tested on), but it should work with most Linux desktop setups. I have not tested Windows or macOS. That's for the community to help me with :)
 
 ## Installation & Build
 
 This tool is a Python script that can be compiled into a standalone executable.
 
 **Prerequisites:**
-* Python 3.8 or higher
+* Python 3.8 or higher (Steam Deck comes with 3.13 so you're good)
 * Ryujinx installed and configured to an extent (like, you should at least add a controller and remove it just to create the Config.json file, y'know?)
 
 **1. Clone the Repository**
@@ -49,19 +49,21 @@ source build_env/bin/activate
 pip3 install -r requirements.txt
 ```
 
-**4. Compile Compile the script into a single executable file.**
+**4. Compile the script into a single executable file.**
 ```bash
 pyinstaller --onefile --noconsole --name "Ryujinx Config Tool" main.py
 ```
 
-The executable will be located in the dist/ folder. You should copy that to the same directory as Ryujinx's Config.json file, wherever that may be for you. An easy way to check is to open Ryujinx (in desktop mode), then `File > Open Ryujinx Folder` and it should be there. Just paste your executable in that same place as Config.json.
+The executable will be located in the `dist/` folder. You should copy the executable to the same directory as Ryujinx's Config.json file, wherever that may be for you. An easy way to check is to open Ryujinx (in desktop mode), then `File > Open Ryujinx Folder` and it should be there. Just paste your executable in that same place as Config.json.
 
 # Setup in Steam
 1. Open Steam in Desktop Mode.
 2. Navigate to Games > Add a Non-Steam Game.
 3. Browse and select the Ryujinx Config Tool executable from the Ryujinx folder (where you should have pasted the executable earlier :D).
 
-Return to Gaming Mode (or Big Picture Mode) so that you can launch the app. Also, it probably goes without mentioning, but you should connect your controllers to your device (Steam Deck, PC, whatever it is) by now.
+**As of now, I seem to be running into a glitch with adding non-Steam games on Linux, it happens on both Steam Deck and my personal Linux PC. Keep reading to find out how to fix this!**
+
+Return to Gaming Mode (or Big Picture Mode) so that you can launch the app. Also, it probably goes without mentioning, but you should connect your controllers to your device (Steam Deck, PC, whatever it is) by now, and make sure Steam controller input is properly configured. 
 
 ## Controls
 
@@ -76,7 +78,7 @@ Return to Gaming Mode (or Big Picture Mode) so that you can launch the app. Also
 ## Issues?
 I understand that this is a terribly coded app, I appreciate any and all contributions from people much smarter than I. Feel free to add an issue or a pull request :)
 
-1. Can't add a non-Steam app because it just doesn't show up in the list even if you browse for it? Well, you should simply add an app that's already in the list of non-Steam apps and then just edit the configuration to what you need. Just in case you need it, the config is here:
+1. Can't add a non-Steam app because it just doesn't show up in the list even if you browse for it? Well, you should simply add an app that's already in the list of non-Steam apps and then just edit the properties to what you need. Just in case you need it, the config is here:
 
 * Target: `"/home/may/.var/app/io.github.ryubing.Ryujinx/config/Ryujinx/Ryujinx Config Tool"` (obviously this one is mine, change it however you need to, also, quotes are required)
 * Start in: `/home` (no quotes for this one)
