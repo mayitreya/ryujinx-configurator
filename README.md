@@ -19,7 +19,7 @@ Ryujinx Configurator provides a controller friendly, fullscreen interface that a
 This tool is designed for couch gaming setups, allowing you to seamlessly configure multiple controllers for local multiplayer sessions without leaving the Big Picture interface.
 
 ## Compatibility
-This project works best with Steam Deck, but it should work with most Linux desktop setups. I have not tested Windows or macOS. That's for the community to help me with :)
+This project works best with Steam Deck (that's the only device I tested on), but it should work with most Linux desktop setups. I have not tested Windows or macOS. That's for the community to help me with :)
 
 ## Installation & Build
 
@@ -60,7 +60,6 @@ The executable will be located in the dist/ folder. You should copy that to the 
 1. Open Steam in Desktop Mode.
 2. Navigate to Games > Add a Non-Steam Game.
 3. Browse and select the Ryujinx Config Tool executable from the Ryujinx folder (where you should have pasted the executable earlier :D).
-4. It's important that you go into the controller settings of the new app you added and DISABLE Steam input! Otherwise the app's controller listener and Steam's controller drivers will conflict and you won't be able to move using your controller.
 
 Return to Gaming Mode (or Big Picture Mode) so that you can launch the app. Also, it probably goes without mentioning, but you should connect your controllers to your device (Steam Deck, PC, whatever it is) by now.
 
