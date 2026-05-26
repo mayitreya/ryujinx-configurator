@@ -1,9 +1,10 @@
-# Currently in a very buggy state (disagreements with controller names will throw Ryujinx off) -- I'm in the process of writing a fix!
-
 # Ryujinx Configurator
 When you want to quickly bind your controllers for Ryujinx directly from Steam Big Picture Mode
 
 I recommend reading every point because this app can be really finnicky and 99% of problems can be solved by just reading this page :)
+
+> [!NOTE]
+> For those who believe that Linux terminal commands are daunting, I understand. I tried to make this as straightforward as possible to compile into an executable, but there are also releases under the releases tab if that's more your style, although that may not work depending on the Linux distro you're running. I really do recommend compiling this using Python tools as shown in the guide, it's really easy I promise.
 
 ## Overview
 Personally, I've run into so many of these situations:
@@ -21,7 +22,7 @@ Ryujinx Configurator provides a controller friendly, fullscreen interface that a
 This tool is designed for couch gaming setups, allowing you to seamlessly configure multiple controllers for local multiplayer sessions without leaving the Big Picture interface.
 
 ## Compatibility
-*This project works best with Steam Deck* (that's the only device I tested on), but it should work with most Linux desktop setups. I have not tested Windows or macOS. That's for the community to help me with :)
+*This project works best with Steam Deck* (that's the only device I tested on apart from my PC running Nobara), but it should work with most Linux desktop setups. I have not tested Windows or macOS. That's for the community to help me with :)
 
 ## Installation & Build
 
@@ -39,7 +40,9 @@ cd ryujinx-configurator
 
 **2. Set up a Virtual Environment (It is recommended to use a virtual environment to avoid conflicts with system packages).**
 
-My system packages conflicted with some of the packages for this app, so I really do recommend making a virtual environment to solve that :)
+My system packages conflicted with some of the packages for this app, so I really do recommend making a virtual environment to solve that
+
+`cd` into the directory where `main.py` is. Then:
 
 ```bash
 python3 -m venv build_env
@@ -76,9 +79,32 @@ Return to Gaming Mode (or Big Picture Mode) so that you can launch the app. Also
 | **Back / Cancel** | B / Circle | Esc |
 | **Save & Exit** | Start | S |
 | **Delete Config** | Nothing | R (while hovering over the player) |
+| **Diagnostics** | Back / View / Select | D |
+
+The **Diagnostics** overlay shows exactly what SDL (controller API) reports for each connected controller right now: its name, the GUID/id that will be written, its index, and whether input is being read through the normalized controller layer. Use it to sanity-check a controller before binding, and (see below) to confirm that this tool and Ryujinx see the same device.
+
+## Important: launch this tool the same way you launch Ryujinx
+
+This tool writes a config that points at a controller by its SDL GUID and name. The catch is that **some environments change what SDL sees.** Steam Input (when you launch through Big Picture Mode) hides your physical controller and presents a *virtual* one with a different GUID and a generic name. Game streaming like Moonlight does the same thing; your controllers show up as virtualized Xbox controllers on the host.
+
+None of that is a problem **as long as you launch this tool and Ryujinx the same way**, because then both see the identical device:
+
+| Configure tool via... | Launch Ryujinx via... | Works? |
+| --- | --- | --- |
+| Steam Big Picture | Steam Big Picture | Yes! |
+| Independently (no Steam) | Independently (no Steam) | Yes! |
+| Moonlight session | Moonlight session (same host) | Yes! |
+| One way | A different way | No, because the bindings won't match :( |
+
+If a controller you just configured shows up in Ryujinx as "Waiting for controller connection...", this mismatch is the most likely cause. Open the **Diagnostics** overlay (press `D`) in the tool and compare the `id`/`name` it shows against what Ryujinx lists in its own controller dropdown. They should be identical.
+
+One more thing about **multiple identical controllers** (e.g. two of the same Xbox pad, or several pads streamed through Moonlight): they share a GUID and are told apart only by an index (`(0)`, `(1)`, ...). That index depends on the order the controllers connect, so an assignment made in one session may map to a different person's controller next session if they reconnect in a different order. That's a limitation of how the controllers identify themselves, not something this tool can work around.
+
+# Art!
+I created some really rudimentary art in Krita using Steam Grid DB images I found. Feel free to replace them with whatever you want. File name doesn't matter by the way, you do it through Steam.
 
 ## Issues?
-I understand that this is a terribly coded app, I appreciate any and all contributions from people much smarter than I. Feel free to add an issue or a pull request :)
+This app can still be finnicky, and I appreciate any and all contributions from people much smarter than I am. Feel free to add an issue or a pull request :)
 
 1. Can't add a non-Steam app because it just doesn't show up in the list even if you browse for it? Well, you should simply add an app that's already in the list of non-Steam apps and then just edit the properties to what you need. Just in case you need it, the config is here:
 
@@ -86,7 +112,7 @@ I understand that this is a terribly coded app, I appreciate any and all contrib
 * Start in: `/home` (no quotes for this one)
 * No launch options at all
 
-2. Add any more common issues here and fixes to them
+2. Add any more common issues here and fixes to them, I haven't run into anything else
 
 # Credits
 Mayitreya Pasumarthy - Made with love :)

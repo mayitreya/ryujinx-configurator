@@ -172,11 +172,15 @@ class App:
         self.font_md = pygame.font.SysFont("segoe ui", 30)
         self.font_sm = pygame.font.SysFont("segoe ui", 24)
         
-        self.joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
-        for j in self.joysticks: j.init()
-        
+        self.refresh_joysticks()
+
+        self.status_msg = ""
+        self.status_color = THEME["green"]
+        self.status_until = 0
+        self.load_failed = False
+        self.show_diag = False
         self.config_data = self.load_json()
-        
+
         self.state = "MENU"
         self.selected_slot = 0
         self.selected_map_index = 0
@@ -195,6 +199,55 @@ class App:
         self.cursor_rect = pygame.Rect(0,0,0,0)
         self.target_cursor_rect = pygame.Rect(0,0,0,0)
 
+    def refresh_joysticks(self):
+        self.joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
+        for j in self.joysticks: j.init()
+
+        self.controllers = {}
+        try:
+            from pygame._sdl2 import controller as sdl_controller
+            if not sdl_controller.get_init():
+                sdl_controller.init()
+            for j in self.joysticks:
+                try:
+                    c = sdl_controller.Controller.from_joystick(j)
+                    c.init()
+                    self.controllers[j.get_instance_id()] = c
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    @property
+    def controller_ids(self):
+        return set(self.controllers.keys())
+
+    def device_name(self, joy):
+
+        c = self.controllers.get(joy.get_instance_id())
+        if c is not None:
+            try:
+                if c.name: return c.name
+            except Exception:
+                pass
+        return joy.get_name()
+
+    def find_joystick(self, instance_id):
+        for j in self.joysticks:
+            if j.get_instance_id() == instance_id: return j
+        return None
+
+    def pick_gamepad(self, instance_id):
+        joy = self.find_joystick(instance_id)
+        if joy is None:
+            self.refresh_joysticks()
+            joy = self.find_joystick(instance_id)
+        if joy is not None:
+            self.active_device_type = "gamepad"
+            self.active_joy = joy
+            self.current_config = self.setup_config_for_player()
+            self.change_state("MAPPING")
+
     def change_state(self, new_state):
         self.state = new_state
         self.transition_timer = pygame.time.get_ticks() + 300 
@@ -203,29 +256,61 @@ class App:
     def input_locked(self):
         return pygame.time.get_ticks() < self.transition_timer
 
+    def set_status(self, msg, color=None, secs=3.0):
+        self.status_msg = msg
+        self.status_color = color or THEME["green"]
+        self.status_until = pygame.time.get_ticks() + int(secs * 1000)
+
     def load_json(self):
-        if not os.path.exists(CONFIG_FILE): return {"input_config": []}
+        if not os.path.exists(CONFIG_FILE):
+            return {"input_config": []}
+        if not os.path.exists(BACKUP_FILE):
+            try:
+                shutil.copyfile(CONFIG_FILE, BACKUP_FILE)
+            except Exception as ex:
+                self.set_status(f"Could not write backup: {ex}", THEME["warning"], 5.0)
         try:
-            shutil.copyfile(CONFIG_FILE, BACKUP_FILE)
             with open(CONFIG_FILE, 'r') as f:
                 data = json.load(f)
-                if "input_config" not in data: data["input_config"] = []
-                return data
-        except: return {"input_config": []}
+            if "input_config" not in data: data["input_config"] = []
+            return data
+        except Exception as ex:
+            self.load_failed = True
+            self.set_status(f"Config unreadable, saving disabled: {ex}", THEME["warning"], 8.0)
+            return {"input_config": []}
 
     def save_json(self):
+        if getattr(self, "load_failed", False):
+            self.set_status("Save blocked: original config was unreadable (see Config.json.bak)", THEME["warning"], 6.0)
+            return False
         has_keyboard = any(c.get("backend") == "WindowKeyboard" for c in self.config_data.get("input_config", []))
         if has_keyboard: self.config_data["enable_keyboard"] = True
         try:
-            with open(CONFIG_FILE, 'w') as f:
+            tmp = CONFIG_FILE + ".tmp"
+            with open(tmp, 'w') as f:
                 json.dump(self.config_data, f, indent=2)
-        except: pass
+            os.replace(tmp, CONFIG_FILE)
+            self.set_status("Saved", THEME["green"], 2.0)
+            return True
+        except Exception as ex:
+            self.set_status(f"SAVE FAILED: {ex}", THEME["warning"], 6.0)
+            return False
 
     def convert_guid(self, guid):
+        # Ryujinx stores the controller id as new Guid(sdlGuidHex).ToString(), where .NET's
+        # Guid reverses the byte order of the first three fields (4-byte, 2-byte, 2-byte)
+        # and leaves the rest as-is. Crucially, Ryujinx first ZEROES the CRC16 in bytes 2-3
+        # (SDL stuffs a name/info checksum there that varies and shouldn't affect matching).
+        # Verified against a Bluetooth Switch Pro Controller: SDL CRC 0x15b7 -> Ryujinx 0000.
         if len(guid) != 32: return guid
-        bus, vendor = guid[0:2], guid[8:12]
-        vendor_swap = vendor[2:4] + vendor[0:2]
-        return f"000000{bus}-{vendor_swap}-0000-{guid[16:20]}-{guid[20:]}"
+        b = [guid[i:i+2] for i in range(0, 32, 2)]  # 16 bytes
+        b[2] = b[3] = "00"
+        g1 = b[3] + b[2] + b[1] + b[0]
+        g2 = b[5] + b[4]
+        g3 = b[7] + b[6]
+        g4 = b[8] + b[9]
+        g5 = "".join(b[10:16])
+        return f"{g1}-{g2}-{g3}-{g4}-{g5}"
 
     def get_guid_relative_index(self, target_joy):
         target_guid = target_joy.get_guid()
@@ -265,7 +350,7 @@ class App:
             guid = self.convert_guid(j.get_guid())
             idx = self.get_guid_relative_index(j)
             conf["id"] = f"{idx}-{guid}"
-            conf["name"] = f"{j.get_name()} ({idx})"
+            conf["name"] = f"{self.device_name(j)} ({idx})"
             self.current_target_list = TARGETS_GAMEPAD
         elif self.active_device_type == "keyboard":
             self.current_target_list = TARGETS_KEYBOARD
@@ -386,6 +471,67 @@ class App:
         pygame.draw.rect(self.screen, THEME["panel_sel"], self.cursor_rect, border_radius=radius)
         pygame.draw.rect(self.screen, THEME["accent"], self.cursor_rect, 3, border_radius=radius)
 
+    def draw_status_toast(self):
+        if not self.status_msg or pygame.time.get_ticks() > self.status_until:
+            return
+        surf = self.font_md.render(self.status_msg, True, THEME["text"])
+        pad = 20
+        box = surf.get_rect()
+        box.inflate_ip(pad * 2, pad)
+        box.centerx = self.W // 2
+        box.bottom = self.H - 90
+        self.draw_shadow(box, 10)
+        pygame.draw.rect(self.screen, THEME["panel_sel"], box, border_radius=10)
+        pygame.draw.rect(self.screen, self.status_color, box, 3, border_radius=10)
+        self.screen.blit(surf, surf.get_rect(center=box.center))
+
+    def draw_diagnostics(self):
+        # Shows exactly what SDL reports right now, so you can launch the tool through
+        # Steam BPM vs. independently and compare. If the converted GUID / id differs
+        # between the two, that's why Ryujinx (launched the other way) ignores a binding.
+        overlay = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+        overlay.fill((*THEME["bg"], 235))
+        self.screen.blit(overlay, (0, 0))
+
+        x, y = 60, 40
+        steam = os.environ.get("SteamAppId") or os.environ.get("SteamGameId")
+        header = [
+            "DIAGNOSTICS  (press [D] or [Back/View] to close)",
+            f"Launched via Steam: {'YES (id ' + steam + ')' if steam else 'no'}    "
+            f"Pads detected: {len(self.joysticks)}",
+            "Compare these values between your Steam-BPM launch and your independent launch.",
+        ]
+        for line in header:
+            self.screen.blit(self.font_sm.render(line, True, THEME["accent"]), (x, y))
+            y += 32
+        y += 10
+
+        if not self.joysticks:
+            self.screen.blit(self.font_md.render("No controllers connected.", True, THEME["text_dim"]), (x, y))
+            return
+
+        for i, j in enumerate(self.joysticks):
+            raw = j.get_guid()
+            ryu = self.convert_guid(raw)
+            idx = self.get_guid_relative_index(j)
+            is_ctrl = j.get_instance_id() in self.controller_ids
+            name = self.device_name(j)
+            lines = [
+                (f"[{i}] {name}", THEME["text"]),
+                (f"      HID name : {j.get_name()}", THEME["text_dim"]),
+                (f"      raw GUID : {raw}", THEME["text_dim"]),
+                (f"      Ryujinx  : id={idx}-{ryu}", THEME["text_dim"]),
+                (f"      name     : {name} ({idx})", THEME["text_dim"]),
+                (f"      input via: {'SDL controller (normalized)' if is_ctrl else 'raw button indices (fallback)'}",
+                 THEME["green"] if is_ctrl else THEME["warning"]),
+            ]
+            for text, col in lines:
+                self.screen.blit(self.font_sm.render(text, True, col), (x, y))
+                y += 28
+            y += 12
+            if y > self.H - 60:
+                break
+
     def render_menu(self):
         self.draw_header("Controller Configuration", "Configure up to 8 players")
         start_y = 160
@@ -453,7 +599,7 @@ class App:
         self.draw_footer("Waiting for input...", "[ESC]/[B]: Cancel")
 
     def render_mapping(self):
-        dev_name = "Keyboard" if self.active_device_type == "keyboard" else self.active_joy.get_name()
+        dev_name = "Keyboard" if self.active_device_type == "keyboard" else self.device_name(self.active_joy)
         self.draw_header(f"Configure: {dev_name}", f"Player {self.selected_slot + 1}")
         targets = self.current_target_list
         visible = 9
@@ -594,6 +740,8 @@ class App:
 
             for e in events:
                 if e.type == pygame.QUIT: sys.exit()
+                if e.type in (pygame.JOYDEVICEADDED, pygame.JOYDEVICEREMOVED):
+                    self.refresh_joysticks()
                 if not input_allowed: continue
                 
                 if e.type == pygame.KEYDOWN:
@@ -610,22 +758,28 @@ class App:
                         elif e.key == pygame.K_ESCAPE: back = True
                         elif e.key == pygame.K_s: save = True
                         elif e.key == pygame.K_r: delete = True
+                        elif e.key == pygame.K_d: self.show_diag = not self.show_diag
                         if self.state == "DETECT" and e.key == pygame.K_RETURN:
                             self.active_device_type = "keyboard"
                             self.current_config = self.setup_config_for_player()
                             self.change_state("MAPPING")
                             select = False
 
-                if e.type == pygame.JOYBUTTONDOWN:
-                    if e.button == 0: select = True 
-                    if e.button == 1: back = True   
-                    if e.button == 7 or e.button == 6: save = True 
+                if e.type == pygame.CONTROLLERBUTTONDOWN:
+                    if e.button == pygame.CONTROLLER_BUTTON_A: select = True       # bottom face = confirm
+                    elif e.button == pygame.CONTROLLER_BUTTON_B: back = True       # right face = back
+                    elif e.button == pygame.CONTROLLER_BUTTON_START: save = True
+                    elif e.button == pygame.CONTROLLER_BUTTON_BACK: self.show_diag = not self.show_diag
                     if self.state == "DETECT":
-                        self.active_device_type = "gamepad"
-                        for j in self.joysticks:
-                            if j.get_instance_id() == e.instance_id: self.active_joy = j; break
-                        self.current_config = self.setup_config_for_player()
-                        self.change_state("MAPPING")
+                        self.pick_gamepad(e.instance_id)
+                        select = False
+
+                if e.type == pygame.JOYBUTTONDOWN and e.instance_id not in self.controller_ids:
+                    if e.button == 0: select = True
+                    if e.button == 1: back = True
+                    if e.button == 7 or e.button == 6: save = True
+                    if self.state == "DETECT":
+                        self.pick_gamepad(e.instance_id)
                         select = False
 
             if self.state == "MENU":
@@ -634,7 +788,8 @@ class App:
                 elif nav_dir == "right": self.selected_slot = (self.selected_slot + 1) % MAX_PLAYERS
                 elif nav_dir == "left": self.selected_slot = (self.selected_slot - 1) % MAX_PLAYERS
                 if select: self.change_state("DETECT")
-                if save: self.save_json(); sys.exit()
+                if save:
+                    if self.save_json(): sys.exit()
 
                 if delete:
                     p_tag = f"Player{self.selected_slot+1}"
@@ -674,6 +829,8 @@ class App:
                 if back: self.change_state("MAPPING")
                 self.render_selector()
 
+            if self.show_diag: self.draw_diagnostics()
+            self.draw_status_toast()
             pygame.display.flip()
             clock.tick(60)
 
