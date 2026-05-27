@@ -87,6 +87,9 @@ The **Diagnostics** overlay shows exactly what SDL (controller API) reports for 
 
 This tool writes a config that points at a controller by its SDL GUID and name. The catch is that **some environments change what SDL sees.** Steam Input (when you launch through Big Picture Mode) hides your physical controller and presents a *virtual* one with a different GUID and a generic name. Game streaming like Moonlight does the same thing; your controllers show up as virtualized Xbox controllers on the host.
 
+> [!IMPORTANT]
+> Disable Steam input for controllers for everything Ryujinx related! This includes the Ryujinx app itself if you have that as a non-Steam game, as well as any shortcuts to Ryujinx games that you have as part of Steam BPM. Ryujinx Config Tool won't work with Steam input.
+
 None of that is a problem **as long as you launch this tool and Ryujinx the same way**, because then both see the identical device:
 
 | Configure tool via... | Launch Ryujinx via... | Works? |
