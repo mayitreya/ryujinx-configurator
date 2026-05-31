@@ -14,21 +14,47 @@
 # That's a "later" task though...
 # Good luck soldier o7
 
-import pygame
-import json
 import os
 import sys
-import copy
-import shutil
-import math
+import json
 
 if getattr(sys, 'frozen', False):
     SCRIPT_DIR = os.path.dirname(sys.executable)
 else:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-    
+
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "Config.json")
 BACKUP_FILE = os.path.join(SCRIPT_DIR, "Config.json.bak")
+SETTINGS_FILE = os.path.join(SCRIPT_DIR, "rct_settings.json")
+
+# Whether SDL HIDAPI is on decides which GUID a pad gets. The "right" answer depends on the Ryujinx build the user runs against: Flatpak Ryujinx on Steam
+# Deck enables HIDAPI by default, native Ryujinx on most Linux distros does not. We can't infer which one, so it's a user-controlled toggle persisted in
+# SETTINGS_FILE. Default off = matches stock pygame behaviour, which agrees with native Ryujinx. Toggle via [H] in the diagnostics overlay.
+_HIDAPI_KEYS = (
+    "SDL_JOYSTICK_HIDAPI",
+    "SDL_JOYSTICK_HIDAPI_SWITCH",
+    "SDL_JOYSTICK_HIDAPI_PS4",
+    "SDL_JOYSTICK_HIDAPI_PS5",
+    "SDL_JOYSTICK_HIDAPI_XBOX",
+    "SDL_JOYSTICK_HIDAPI_XBOX_360",
+    "SDL_JOYSTICK_HIDAPI_XBOX_ONE",
+    "SDL_JOYSTICK_HIDAPI_GAMECUBE",
+    "SDL_JOYSTICK_HIDAPI_JOYCON",
+    "SDL_JOYSTICK_HIDAPI_STADIA",
+    "SDL_JOYSTICK_HIDAPI_LUNA",
+)
+try:
+    with open(SETTINGS_FILE, 'r') as _f:
+        HIDAPI_ENABLED = bool(json.load(_f).get("hidapi", False))
+except Exception:
+    HIDAPI_ENABLED = False
+for _k in _HIDAPI_KEYS:
+    os.environ[_k] = "1" if HIDAPI_ENABLED else "0"
+
+import pygame
+import copy
+import shutil
+import math
 MAX_PLAYERS = 8
 
 THEME = {
@@ -166,11 +192,15 @@ class App:
         info = pygame.display.Info()
         self.W, self.H = info.current_w, info.current_h
         self.screen = pygame.display.set_mode((self.W, self.H), pygame.FULLSCREEN)
-        
-        self.font_title = pygame.font.SysFont("segoe ui", 52, bold=True)
-        self.font_lg = pygame.font.SysFont("segoe ui", 38)
-        self.font_md = pygame.font.SysFont("segoe ui", 30)
-        self.font_sm = pygame.font.SysFont("segoe ui", 24)
+
+        # Scale layout from a 1920x1080 reference, shrink-only so big displays
+        # render at native sizes and small displays (Steam Deck 1280x800) fit.
+        self.scale = min(self.W / 1920.0, self.H / 1080.0, 1.0)
+
+        self.font_title = pygame.font.SysFont("segoe ui", self.s(52), bold=True)
+        self.font_lg = pygame.font.SysFont("segoe ui", self.s(38))
+        self.font_md = pygame.font.SysFont("segoe ui", self.s(30))
+        self.font_sm = pygame.font.SysFont("segoe ui", self.s(24))
         
         self.refresh_joysticks()
 
@@ -248,6 +278,9 @@ class App:
             self.current_config = self.setup_config_for_player()
             self.change_state("MAPPING")
 
+    def s(self, n):
+        return max(1, int(round(n * self.scale)))
+
     def change_state(self, new_state):
         self.state = new_state
         self.transition_timer = pygame.time.get_ticks() + 300 
@@ -260,6 +293,22 @@ class App:
         self.status_msg = msg
         self.status_color = color or THEME["green"]
         self.status_until = pygame.time.get_ticks() + int(secs * 1000)
+
+    def toggle_hidapi(self):
+        global HIDAPI_ENABLED
+        new_val = not HIDAPI_ENABLED
+        try:
+            tmp = SETTINGS_FILE + ".tmp"
+            with open(tmp, 'w') as f:
+                json.dump({"hidapi": new_val}, f, indent=2)
+            os.replace(tmp, SETTINGS_FILE)
+            HIDAPI_ENABLED = new_val
+            self.set_status(
+                f"HIDAPI {'ON' if new_val else 'OFF'} - relaunch the tool to apply",
+                THEME["accent"], 6.0,
+            )
+        except Exception as ex:
+            self.set_status(f"Could not save settings: {ex}", THEME["warning"], 6.0)
 
     def load_json(self):
         if not os.path.exists(CONFIG_FILE):
@@ -408,25 +457,27 @@ class App:
         self.screen.blit(shadow_surf, (rect.x + 3, rect.y + 5))
 
     def draw_header(self, text, subtitle=""):
-        pygame.draw.rect(self.screen, THEME["header_bg"], (0, 0, self.W, 100))
+        h = self.s(100)
+        pygame.draw.rect(self.screen, THEME["header_bg"], (0, 0, self.W, h))
         title = self.font_title.render(text, True, THEME["text"])
-        self.screen.blit(title, (50, 20))
+        self.screen.blit(title, (self.s(50), self.s(20)))
         if subtitle:
             sub = self.font_sm.render(subtitle, True, THEME["text_dim"])
-            self.screen.blit(sub, (50, 75))
-        pygame.draw.line(self.screen, THEME["divider"], (0, 100), (self.W, 100), 2)
+            self.screen.blit(sub, (self.s(50), self.s(75)))
+        pygame.draw.line(self.screen, THEME["divider"], (0, h), (self.W, h), 2)
 
     def draw_footer(self, left_text, right_text=""):
-        y = self.H - 70
-        pygame.draw.rect(self.screen, THEME["header_bg"], (0, y, self.W, 70))
+        fh = self.s(70)
+        y = self.H - fh
+        pygame.draw.rect(self.screen, THEME["header_bg"], (0, y, self.W, fh))
         pygame.draw.line(self.screen, THEME["divider"], (0, y), (self.W, y), 2)
         l_surf = self.font_sm.render(left_text, True, THEME["text_dim"])
-        self.screen.blit(l_surf, (50, y + 20))
+        self.screen.blit(l_surf, (self.s(50), y + self.s(20)))
         if right_text:
             r_surf = self.font_sm.render(right_text, True, THEME["text_dim"])
             r_rect = r_surf.get_rect()
-            r_rect.right = self.W - 50
-            r_rect.top = y + 20
+            r_rect.right = self.W - self.s(50)
+            r_rect.top = y + self.s(20)
             self.screen.blit(r_surf, r_rect)
 
     # Icons not made by me, they were created by Gemini
@@ -475,11 +526,11 @@ class App:
         if not self.status_msg or pygame.time.get_ticks() > self.status_until:
             return
         surf = self.font_md.render(self.status_msg, True, THEME["text"])
-        pad = 20
+        pad = self.s(20)
         box = surf.get_rect()
         box.inflate_ip(pad * 2, pad)
         box.centerx = self.W // 2
-        box.bottom = self.H - 90
+        box.bottom = self.H - self.s(90)
         self.draw_shadow(box, 10)
         pygame.draw.rect(self.screen, THEME["panel_sel"], box, border_radius=10)
         pygame.draw.rect(self.screen, self.status_color, box, 3, border_radius=10)
@@ -493,18 +544,22 @@ class App:
         overlay.fill((*THEME["bg"], 235))
         self.screen.blit(overlay, (0, 0))
 
-        x, y = 60, 40
+        x, y = self.s(60), self.s(40)
+        line_h = self.s(32)
+        row_h = self.s(28)
         steam = os.environ.get("SteamAppId") or os.environ.get("SteamGameId")
         header = [
             "DIAGNOSTICS  (press [D] or [Back/View] to close)",
             f"Launched via Steam: {'YES (id ' + steam + ')' if steam else 'no'}    "
             f"Pads detected: {len(self.joysticks)}",
+            f"SDL HIDAPI: {'ON' if HIDAPI_ENABLED else 'OFF'}    "
+            f"[H] to toggle (then relaunch). Pick whichever matches your Ryujinx dropdown.",
             "Compare these values between your Steam-BPM launch and your independent launch.",
         ]
         for line in header:
             self.screen.blit(self.font_sm.render(line, True, THEME["accent"]), (x, y))
-            y += 32
-        y += 10
+            y += line_h
+        y += self.s(10)
 
         if not self.joysticks:
             self.screen.blit(self.font_md.render("No controllers connected.", True, THEME["text_dim"]), (x, y))
@@ -527,31 +582,38 @@ class App:
             ]
             for text, col in lines:
                 self.screen.blit(self.font_sm.render(text, True, col), (x, y))
-                y += 28
-            y += 12
-            if y > self.H - 60:
+                y += row_h
+            y += self.s(12)
+            if y > self.H - self.s(60):
                 break
 
     def render_menu(self):
         self.draw_header("Controller Configuration", "Configure up to 8 players")
-        start_y = 160
-        item_h = 90
-        spacing = 20
+        # Fit 4 rows of tiles between header and footer with even spacing.
+        header_h = self.s(100)
+        footer_h = self.s(70)
+        margin = self.s(60)
+        spacing = self.s(20)
+        avail_h = self.H - header_h - footer_h - margin * 2
+        item_h = max(self.s(60), (avail_h - spacing * 3) // 4)
+        start_y = header_h + margin
+        side_pad = self.s(60)
+        col_gap = self.s(40)
         for i in range(MAX_PLAYERS):
             p_str = f"Player{i+1}"
             name = "Unconfigured"
             is_conf = False
             for c in self.config_data["input_config"]:
-                if c.get("player_index") == p_str: 
+                if c.get("player_index") == p_str:
                     name = c.get("name", "Unknown")
                     is_conf = True
-            
+
             col = i % 2
             row = i // 2
-            w = (self.W - 160) // 2
-            x = 60 + col * (w + 40)
+            w = (self.W - side_pad * 2 - col_gap) // 2
+            x = side_pad + col * (w + col_gap)
             y = start_y + row * (item_h + spacing)
-            
+
             rect = pygame.Rect(x, y, w, item_h)
             if i == self.selected_slot:
                 self.register_cursor(rect)
@@ -559,16 +621,16 @@ class App:
             else:
                 pygame.draw.rect(self.screen, THEME["panel"], rect, border_radius=12)
 
-            cx = x + 28
-            if is_conf: self.draw_icon_check(cx, y + item_h//2 - 12)
-            else: self.draw_icon_warn(cx, y + item_h//2 - 12)
-            cx += 45
-            
+            cx = x + self.s(28)
+            if is_conf: self.draw_icon_check(cx, y + item_h//2 - self.s(12))
+            else: self.draw_icon_warn(cx, y + item_h//2 - self.s(12))
+            cx += self.s(45)
+
             tc = THEME["text"] if i == self.selected_slot else THEME["text_dim"]
-            self.screen.blit(self.font_md.render(f"Player {i+1}", True, tc), (cx, y + item_h//2 - 15))
-            
+            self.screen.blit(self.font_md.render(f"Player {i+1}", True, tc), (cx, y + item_h//2 - self.s(15)))
+
             vc = THEME["accent"] if i == self.selected_slot else THEME["text_dim"]
-            val_rect = self.font_sm.render(name, True, vc).get_rect(centery=y+item_h//2, right=x+w-28)
+            val_rect = self.font_sm.render(name, True, vc).get_rect(centery=y+item_h//2, right=x+w-self.s(28))
             self.screen.blit(self.font_sm.render(name, True, vc), val_rect)
 
         self.draw_footer("[ARROWS]/[DPAD]/[L Stick]: Navigate     [ENTER]/[A]: Configure", "[S]/[+]: Save All")
@@ -576,25 +638,25 @@ class App:
     def render_detect(self):
         self.draw_header(f"Player {self.selected_slot + 1} - Select Input")
         cx, cy = self.W // 2, self.H // 2
-        card_rect = pygame.Rect(0, 0, 750, 340)
-        card_rect.center = (cx, cy - 30)
-        
+        card_rect = pygame.Rect(0, 0, self.s(750), self.s(340))
+        card_rect.center = (cx, cy - self.s(30))
+
         pygame.draw.rect(self.screen, THEME["panel"], card_rect, border_radius=16)
         pygame.draw.rect(self.screen, THEME["divider"], card_rect, 2, border_radius=16)
-        
+
         title = self.font_lg.render("Choose Input Method", True, THEME["text"])
-        self.screen.blit(title, title.get_rect(center=(cx, card_rect.top + 50)))
-        
-        self.draw_icon_controller(card_rect.left + 80, card_rect.top + 120)
+        self.screen.blit(title, title.get_rect(center=(cx, card_rect.top + self.s(50))))
+
+        self.draw_icon_controller(card_rect.left + self.s(80), card_rect.top + self.s(120))
         c_text = self.font_md.render("Press any button on Controller", True, THEME["text_dim"])
-        self.screen.blit(c_text, (card_rect.left + 140, card_rect.top + 120))
-        
-        ly = card_rect.top + 170
-        pygame.draw.line(self.screen, THEME["divider"], (card_rect.left + 60, ly), (card_rect.right - 60, ly), 2)
-        
-        self.draw_icon_keyboard(card_rect.left + 80, ly + 50)
+        self.screen.blit(c_text, (card_rect.left + self.s(140), card_rect.top + self.s(120)))
+
+        ly = card_rect.top + self.s(170)
+        pygame.draw.line(self.screen, THEME["divider"], (card_rect.left + self.s(60), ly), (card_rect.right - self.s(60), ly), 2)
+
+        self.draw_icon_keyboard(card_rect.left + self.s(80), ly + self.s(50))
         k_text = self.font_md.render("Press [ENTER] for Keyboard", True, THEME["text_dim"])
-        self.screen.blit(k_text, (card_rect.left + 140, ly + 50))
+        self.screen.blit(k_text, (card_rect.left + self.s(140), ly + self.s(50)))
         
         self.draw_footer("Waiting for input...", "[ESC]/[B]: Cancel")
 
@@ -602,41 +664,46 @@ class App:
         dev_name = "Keyboard" if self.active_device_type == "keyboard" else self.device_name(self.active_joy)
         self.draw_header(f"Configure: {dev_name}", f"Player {self.selected_slot + 1}")
         targets = self.current_target_list
-        visible = 9
-        item_h = 68
-        spacing = 12
-        start_idx = max(0, self.selected_map_index - 4)
+        header_h = self.s(100)
+        footer_h = self.s(70)
+        list_y = header_h + self.s(40)
+        item_h = self.s(68)
+        spacing = self.s(12)
+        avail_h = self.H - list_y - footer_h - self.s(40)
+        visible = max(3, min(9, avail_h // (item_h + spacing)))
+        half = visible // 2
+        start_idx = max(0, self.selected_map_index - half)
         if start_idx + visible > len(targets): start_idx = max(0, len(targets) - visible)
-        list_y = 140
-        
+
+        side_pad = self.s(100)
         for i in range(visible):
             idx = start_idx + i
             if idx >= len(targets): break
             lbl, key = targets[idx]
             val = self.get_display_value(key)
             y = list_y + i * (item_h + spacing)
-            w = self.W - 200
-            x = 100
+            w = self.W - side_pad * 2
+            x = side_pad
             rect = pygame.Rect(x, y, w, item_h)
-            
+
             if idx == self.selected_map_index:
                 self.register_cursor(rect)
                 self.draw_animated_cursor(10)
             else:
                 pygame.draw.rect(self.screen, THEME["panel"], rect, border_radius=10)
-            
+
             tc = THEME["text"] if idx == self.selected_map_index else THEME["text_dim"]
-            self.screen.blit(self.font_md.render(lbl, True, tc), (x+24, y+item_h//2-15))
-            
+            self.screen.blit(self.font_md.render(lbl, True, tc), (x+self.s(24), y+item_h//2-self.s(15)))
+
             vc = THEME["accent"] if idx == self.selected_map_index else THEME["text_dim"]
-            vr = self.font_sm.render(str(val), True, vc).get_rect(centery=y+item_h//2, right=x+w-24)
-            pill = pygame.Rect(vr.left-12, vr.top-6, vr.width+24, vr.height+12)
+            vr = self.font_sm.render(str(val), True, vc).get_rect(centery=y+item_h//2, right=x+w-self.s(24))
+            pill = pygame.Rect(vr.left-self.s(12), vr.top-self.s(6), vr.width+self.s(24), vr.height+self.s(12))
             pc = THEME["bg"] if idx != self.selected_map_index else THEME["panel"]
             pygame.draw.rect(self.screen, pc, pill, border_radius=16)
             self.screen.blit(self.font_sm.render(str(val), True, vc), vr)
-            
-        if start_idx > 0: self.draw_scroll_hint("up", list_y - 35)
-        if start_idx + visible < len(targets): self.draw_scroll_hint("down", list_y + visible * (item_h + spacing) + 20)
+
+        if start_idx > 0: self.draw_scroll_hint("up", list_y - self.s(35))
+        if start_idx + visible < len(targets): self.draw_scroll_hint("down", list_y + visible * (item_h + spacing) + self.s(20))
         
         hint = "[ENTER] Press Key" if self.active_device_type == "keyboard" else "[ENTER] Change Mapping"
         self.draw_footer(f"[ARROWS]/[DPAD]/[L Stick]: Navigate     {hint}", "[S]/[+]: Save & Return")
@@ -651,44 +718,49 @@ class App:
             t1 = self.font_lg.render(f"Press Key for: {lbl}", True, THEME["accent"])
             self.screen.blit(t1, t1.get_rect(center=(self.W//2, self.H//2)))
             t2 = self.font_md.render("Press [ESC]/[B] to Cancel", True, THEME["text_dim"])
-            self.screen.blit(t2, t2.get_rect(center=(self.W//2, self.H//2+50)))
+            self.screen.blit(t2, t2.get_rect(center=(self.W//2, self.H//2+self.s(50))))
             return
 
         overlay = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
         overlay.fill((*THEME["bg"], 200))
         self.screen.blit(overlay, (0,0))
-        pw, ph = 600, 680
+        ih = self.s(58)
+        title_h = self.s(90)
+        hint_h = self.s(60)
+        # Cap panel height to screen with margins so it fits on small displays.
+        max_ph = self.H - self.s(80)
+        vis = max(3, min(9, (max_ph - title_h - hint_h - self.s(20)) // ih))
+        pw = self.s(600)
+        ph = title_h + vis * ih + hint_h + self.s(20)
         px, py = (self.W - pw)//2, (self.H - ph)//2
         self.draw_shadow(pygame.Rect(px, py, pw, ph), radius=16)
         pygame.draw.rect(self.screen, THEME["bg"], (px, py, pw, ph), border_radius=16)
         pygame.draw.rect(self.screen, THEME["accent"], (px, py, pw, ph), 3, border_radius=16)
-        pygame.draw.rect(self.screen, THEME["header_bg"], (px, py, pw, 90), border_top_left_radius=16, border_top_right_radius=16)
-        
+        pygame.draw.rect(self.screen, THEME["header_bg"], (px, py, pw, title_h), border_top_left_radius=16, border_top_right_radius=16)
+
         title = self.font_lg.render("Select Input", True, THEME["accent"])
-        self.screen.blit(title, title.get_rect(center=(px+pw//2, py+45)))
-        pygame.draw.line(self.screen, THEME["divider"], (px+20, py+90), (px+pw-20, py+90), 2)
-        
-        ly = py + 110
-        vis = 9
-        ih = 58
+        self.screen.blit(title, title.get_rect(center=(px+pw//2, py+title_h//2)))
+        pygame.draw.line(self.screen, THEME["divider"], (px+self.s(20), py+title_h), (px+pw-self.s(20), py+title_h), 2)
+
+        ly = py + title_h + self.s(20)
         if self.dropdown_index < self.dropdown_offset: self.dropdown_offset = self.dropdown_index
         elif self.dropdown_index >= self.dropdown_offset + vis: self.dropdown_offset = self.dropdown_index - vis + 1
-        
+
         for i in range(vis):
             idx = self.dropdown_offset + i
             if idx >= len(DROPDOWN_MAP): break
             disp, _ = DROPDOWN_MAP[idx]
             dy = ly + i * ih
-            rect = pygame.Rect(px+30, dy, pw-60, ih-6)
+            rect = pygame.Rect(px+self.s(30), dy, pw-self.s(60), ih-self.s(6))
             is_sel = (idx == self.dropdown_index)
             col = THEME["panel_sel"] if is_sel else THEME["panel"]
             pygame.draw.rect(self.screen, col, rect, border_radius=8)
-            if is_sel: pygame.draw.rect(self.screen, THEME["accent"], (px+30, dy, 5, ih-6), border_radius=8)
+            if is_sel: pygame.draw.rect(self.screen, THEME["accent"], (px+self.s(30), dy, self.s(5), ih-self.s(6)), border_radius=8)
             tc = THEME["text"] if is_sel else THEME["text_dim"]
-            self.screen.blit(self.font_md.render(disp, True, tc), (px+50, dy+12))
-            
+            self.screen.blit(self.font_md.render(disp, True, tc), (px+self.s(50), dy+self.s(12)))
+
         hint = self.font_sm.render("[ARROWS]/[DPAD]/[L Stick]: Navigate     [ENTER]/[A]: Select     [ESC]/[B]: Cancel", True, THEME["text_dim"])
-        self.screen.blit(hint, hint.get_rect(center=(px+pw//2, py+ph-30)))
+        self.screen.blit(hint, hint.get_rect(center=(px+pw//2, py+ph-self.s(30))))
 
 
 
@@ -759,6 +831,7 @@ class App:
                         elif e.key == pygame.K_s: save = True
                         elif e.key == pygame.K_r: delete = True
                         elif e.key == pygame.K_d: self.show_diag = not self.show_diag
+                        elif e.key == pygame.K_h: self.toggle_hidapi()
                         if self.state == "DETECT" and e.key == pygame.K_RETURN:
                             self.active_device_type = "keyboard"
                             self.current_config = self.setup_config_for_player()
